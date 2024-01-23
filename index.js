@@ -38,6 +38,7 @@ async function run() {
     const customRequestCollection = client.db('assetDB').collection('customRequest')
     const employeesCollection = client.db('assetDB').collection('employee')
     const productsCollection = client.db('assetDB').collection('product')
+    const requestAssetsCollection = client.db('assetDB').collection('requestAssets')
 
 
     //JWT   related apies
@@ -53,7 +54,7 @@ async function run() {
 
     // middleware
     const verifyToken = (req, res, next) => {
-      console.log('inside verify token', req.headers.authorization);
+      // console.log('inside verify token', req.headers.authorization);
       if (!req.headers.authorization) {
         return res.status(401).send({
           message: 'unauthorized access'
@@ -136,7 +137,7 @@ async function run() {
 
 
     app.get('/employees', verifyToken, verifyAdmin, async (req, res) => {
-      console.log(req.headers);
+      // console.log(req.headers);
       const result = await employeesCollection.find().toArray();
       res.send(result)
     })
@@ -167,10 +168,25 @@ async function run() {
     })
 
 
+    app.post('/requestAssets', async(req,res)=>{
+      const requestAsset = req.body;
+      const today = new Date(); 
+      const sortedDate = `${today.getDate()}/${today.getMonth() + 1}/${today.getFullYear()}`;
+      requestAsset.date = sortedDate;
+      const result = await requestAssetsCollection.insertOne(requestAsset)
+      res.send(result)
+    })
+
+
     // admin related apies
-    app.get('/products', verifyToken, verifyAdmin, async (req, res) => {
+    app.get('/products', verifyToken, async (req, res) => {
+      console.log('hi',req.body.type);
       const result = await productsCollection.find().toArray();
-      res.send(result);
+      const updateResult = result.map(product=>({
+        ...product,
+        availability:product.quantity > 0 ? 'Available' : 'Out of Stock',
+      }))
+      res.send(updateResult);
     })
 
     app.post('/products', verifyToken, verifyAdmin, async (req, res) => {
@@ -181,7 +197,7 @@ async function run() {
       const result = await productsCollection.insertOne(product);
       res.send(result)
     })
-    
+
     app.patch('/employees/:id', verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const filter = {
