@@ -9,6 +9,7 @@ const {
   ObjectId
 } = require('mongodb');
 require('dotenv').config();
+const stripe =require('stripe')(process.env.STRIPE_SECRET_KEY)
 
 // middleware
 app.use(cors());
@@ -39,6 +40,8 @@ async function run() {
     const employeesCollection = client.db('assetDB').collection('employee')
     const productsCollection = client.db('assetDB').collection('product')
     const requestAssetsCollection = client.db('assetDB').collection('requestAssets')
+    const adminCollection = client.db('assetDB').collection('admin')
+    const paymentCollection = client.db('assetDB').collection('payments')
 
 
     //JWT   related apies
@@ -91,14 +94,17 @@ async function run() {
 
 
     // user custom request related apies
-    app.get('/custom', async (req, res) => {
+    app.get('/custom',verifyToken, async (req, res) => {
       const result = await customRequestCollection.find().toArray();
       res.send(result)
     })
 
 
-    app.post('/custom', async (req, res) => {
+    app.post('/custom', verifyToken, async (req, res) => {
       const customRequestItem = req.body;
+      const today = new Date(); 
+      const sortedDate = `${today.getDate()}/${today.getMonth() + 1}/${today.getFullYear()}`;
+      customRequestItem.request_date = sortedDate;
       const result = await customRequestCollection.insertOne(customRequestItem)
       res.send(result)
     })
@@ -136,7 +142,7 @@ async function run() {
     })
 
 
-    app.get('/employees', verifyToken, verifyAdmin, async (req, res) => {
+    app.get('/employees', verifyToken, async (req, res) => {
       // console.log(req.headers);
       const result = await employeesCollection.find().toArray();
       res.send(result)
@@ -168,20 +174,85 @@ async function run() {
     })
 
 
-    app.post('/requestAssets', async(req,res)=>{
+    app.get('/requestAssets',verifyToken, async(req,res)=>{
+      const {productName, sortBy} = req.query;
+      const query = {}
+      if(productName){
+        query.product_name =  { $regex: new RegExp(productName, 'i') };
+      }
+      const sort = sortBy ? { type: sortBy === 'nonreturnable' ? 1 : -1 } : {};
+      const result = await requestAssetsCollection.find(query).sort(sort).toArray();
+      res.send(result)
+    })
+
+    app.post('/requestAssets',verifyToken, async(req,res)=>{
       const requestAsset = req.body;
       const today = new Date(); 
       const sortedDate = `${today.getDate()}/${today.getMonth() + 1}/${today.getFullYear()}`;
-      requestAsset.date = sortedDate;
+      requestAsset.request_date = sortedDate;
       const result = await requestAssetsCollection.insertOne(requestAsset)
       res.send(result)
     })
 
 
     // admin related apies
+    app.get('/admin/:email', verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({
+          message: 'forbidden access'
+        })
+      }
+      const query = {
+        email: email
+      };
+      const user = await adminCollection.findOne(query)
+      let admin = false;
+      if (user) {
+        admin = user ?.role === 'admin';
+      }
+      res.send({
+        admin
+      })
+    })
+
+    app.get('/admin', verifyToken, async (req, res) => {
+      // console.log(req.headers);
+      const result = await adminCollection.find().toArray();
+      res.send(result)
+    })
+
+    app.post('/admin', async (req, res) => {
+      const user = req.body;
+      user.role= 'admin';
+      const result = await adminCollection.insertOne(user)
+      res.send(result)
+    })
+
+    app.patch('/admin/:id', verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const filter = {
+        _id: new ObjectId(id)
+      }
+      const updatedDoc = {
+        $set: {
+          role: 'admin'
+        }
+      }
+      const result = await adminCollection.updateOne(filter, updatedDoc)
+      res.send(result)
+    })
+
+
     app.get('/products', verifyToken, async (req, res) => {
-      console.log('hi',req.body.type);
-      const result = await productsCollection.find().toArray();
+      const {productName, sortBy} = req.query;
+      const query = {}
+      if(productName){
+        query.product_name =  { $regex: new RegExp(productName, 'i') };
+      }
+      const sort = sortBy ? { type: sortBy === 'nonreturnable' ? 1 : -1 } : {};
+      // const sort = sortBy ? { type: sortBy === 'nonreturnable' ? { $ne: 'returnable' } : { $ne: 'nonreturnable' } } : {};
+      const result = await productsCollection.find(query).sort(sort).toArray();
       const updateResult = result.map(product=>({
         ...product,
         availability:product.quantity > 0 ? 'Available' : 'Out of Stock',
@@ -213,6 +284,37 @@ async function run() {
     })
 
 
+    // payment intent
+
+    app.post("/create-payment-intent", async(req,res)=>{
+      const { price } = req.body;
+      const amount = parseInt(price*100)
+      console.log('amount inside the amount intent', amount);
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ['card']
+      });
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      })
+    })
+
+
+    app.get('/payments/:email', verifyToken,async(req,res)=>{
+      const query = {email: req.params.email}
+      if(req.params.email !== req.decoded.email){
+        return res.status(403).send({message: 'forbidden access'})
+      }
+      const result = await paymentCollection.find(query).toArray();
+      res.send(result)
+     })
+
+     app.post('/payments', async(req,res)=>{
+      const payment = req.body;
+      const result = await paymentCollection.insertOne(payment)
+      res.send(result)
+    })
 
 
 
