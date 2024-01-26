@@ -109,7 +109,7 @@ async function run() {
       res.send(result)
     })
 
-    app.get('/custom/:id', async (req, res) => {
+    app.get('/custom/:id', verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = {
         _id: new ObjectId(id)
@@ -148,7 +148,7 @@ async function run() {
       res.send(result)
     })
 
-    app.post('/employees', async (req, res) => {
+    app.post('/employees', verifyToken, async (req, res) => {
       const user = req.body;
       const query = {
         email: user.email
@@ -196,7 +196,7 @@ async function run() {
 
 
     // admin related apies
-    app.get('/admin/:email', verifyToken, async (req, res) => {
+    app.get('/admin/:email', verifyToken,  async (req, res) => {
       const email = req.params.email;
       if (email !== req.decoded.email) {
         return res.status(403).send({
@@ -216,13 +216,13 @@ async function run() {
       })
     })
 
-    app.get('/admin', verifyToken, async (req, res) => {
+    app.get('/admin', verifyToken,verifyAdmin, async (req, res) => {
       // console.log(req.headers);
       const result = await adminCollection.find().toArray();
       res.send(result)
     })
 
-    app.post('/admin', async (req, res) => {
+    app.post('/admin',verifyToken, async (req, res) => {
       const user = req.body;
       user.role= 'admin';
       const result = await adminCollection.insertOne(user)
@@ -291,7 +291,7 @@ async function run() {
 
     // payment intent
 
-    app.post("/create-payment-intent", async(req,res)=>{
+    app.post("/create-payment-intent",verifyToken, async(req,res)=>{
       const { price } = req.body;
       const amount = parseInt(price*100)
       console.log('amount inside the amount intent', amount);
@@ -358,10 +358,10 @@ async function run() {
 
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({
-      ping: 1
-    });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    // await client.db("admin").command({
+    //   ping: 1
+    // });
+    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
