@@ -284,6 +284,11 @@ async function run() {
     })
 
 
+
+    // admin stats
+
+   
+
     // payment intent
 
     app.post("/create-payment-intent", async(req,res)=>{
@@ -316,6 +321,40 @@ async function run() {
       res.send(result)
     })
 
+
+    // reqeust-stats using aggregate
+    app.get('/request-stats', async (req, res) => {
+      try {
+        const result = await requestAssetsCollection.aggregate([
+          {
+            $group: {
+              _id: "$type",
+              count: { $sum: 1 }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$count" },
+              data: { $push: { type: "$_id", count: "$count" } }
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              total: 1,
+              data: 1
+            }
+          }
+        ]).toArray();
+    
+        res.json(result);
+      } catch (error) {
+        console.error("Error fetching request stats:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+    
 
 
     // Send a ping to confirm a successful connection
